@@ -6,6 +6,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // Load environment variables
 dotenv.config();
 
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -52,6 +54,22 @@ async function run() {
         res.status(500).send({ message: 'Failed to get parcel' });
       }
     });
+    // GET: a parcel
+    app.get('/parcels/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const parcel = await parcelCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!parcel) {
+          return res.status(404).send({ message: 'Parcel not found' });
+        }
+        res.send(parcel);
+      } catch (error) {
+        console.log('Error fetching parcel: ', error);
+        res.status(500).send({ message: 'Failed to fetch parcel' });
+      }
+    });
     // POST: create a parcel
     app.post('/parcels', async (req, res) => {
       try {
@@ -77,6 +95,26 @@ async function run() {
       } catch (error) {
         console.log('Error deleting parcel:', error);
         res.status(500).send({ message: 'Failed to delete parcel' });
+      }
+    });
+
+    // STRIPE: Payment
+    app.post('/create-payment-intent', async (req, res) => {
+      const { amountInCents, parcelId } = req.body;
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Number(amountInCents), // amount in cents
+          currency: 'eur',
+          // Configure according to your needs
+          payment_method_types: ['card'],
+          // Optional metadata
+          metadata: {
+            order_id: parcelId,
+          },
+        });
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (error) {
+        res.status(500).json({ message: error.message });
       }
     });
 
